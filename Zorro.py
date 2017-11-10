@@ -1,93 +1,122 @@
 #################################################
-
+#
 # (C) Aaron Renaghan
 #
 # Student Number: Aaron Renaghan
 # Course: DT228
-# Date: 10/11/2017
+# Competion Date: 10/11/2017
 #
 # Title: Cleaning Up Zorro
 #
 # Introduction: This program is improve the picture quality from old movies 
 #
-# To Do: 1) Fix the Contrast
-# 2) Stabalise the image
-# 3) Remove Noise
-# 4) Try Colour?
-# 5) Remove the audio from the silent film
-#
 # Description:
 # The algorithm works by going through the following steps.
-# 1. Reading in the image and resizing the background to fit the signature image
-# 2. Creating a mask by preforming adaptive thresholding to extract the signature
-# 3. Eroding and Dilating the mask to smooth out the signature and remove noise
-# 4. Creating a reverse mask and then combining masks to create our output images
-# 5. Brighten up the extracted signature to try get a more true pen colour
-# 6. Showing and saving the output image.
+# 1. Importing Libraries that maybe be required
+# 2. Set control variables for desired output (entire output takes too long)
+# 3. Read in our video and create the video outwriter object
+# 4. Perform Thresholding and Masking for watermark removal
+# 5. Then go frame by frame through the the next steps
+# 6. Remove the Watermark.
+# 7. Sharpen the image to enhance edges so they are not completely lost with blurring
+# 8. Blur the image blurring to reduce the graininess of the image
+# 9. Denoise the image tackle some of the static in the image
+# 10. Write out the frame to file
 #
-# My Experimentation:
+# My Experimentation: Read about my experimentation and my reflection on results
+# on my blog here : https://228aaron.blogspot.com/2017/11/image-processing-assignment-2.html
+#
+# I have also uploaded videos of my output from differant stages and the final
+# version as proessing takes quite a long time on the entire file, these can be found in the blog.
 
-#Importing the Libraries
+# Importing the Libraries
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 from matplotlib import image as image
 
-I = cv2.imread('zorro.png')
-G = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
+# Change These To print out frames of your chosing  and set mode True = Full Video mode 
+# False works between startFrame and endFrame and write results also as images it current directory
+fullVideo = False
+startFrame = 130
+endFrame = 140
 
-# Capturing an image from a webcam:
-capture = cv2.VideoCapture('zorro.mp4')
+# Change to your zorro file location
+video = cv2.VideoCapture("Zorro.mp4")
 
-# saving the video to a file
+# Video Capture:
+grabbed = True
+
+# Object for writing out the video
 fourcc = cv2.VideoWriter_fourcc(*'XVID')
-out = cv2.VideoWriter('Zorro_Out.mp4',fourcc, 20.0, (640,480))
+writeout = cv2.VideoWriter('Zorro.wmv',fourcc, 24.0, (854,480))
 
+# Setting video to frame 1 to thresholding on this to find watermark
+video.set(1,1)
+(grabbed, I) = video.read()	
+G = cv2.cvtColor(I,cv2.COLOR_BGR2GRAY)
+ret, mask = cv2.threshold(G, 0, 255, type = cv2.THRESH_BINARY_INV)
+# Getting the reverse mask since we masked out the black in the image not the watermark
+watermark_masked = cv2.bitwise_not(mask)
 
-while(capture.isOpened()):
-	ret, frame = capture.read()
+# For use printing progress
+frame = 1
+
+if fullVideo == False:
+	video.set(1,startFrame)
+	frame = startFrame
 	
-	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+while (video.isOpened()):
+
+	(grabbed, I) = video.read()
 	
-	cv2.imshow('frame', gray)
+	# Checks if there are no more frames to process
+	if grabbed == False:
+		print 'End Of File'
+		break
+
+	if grabbed == True:	
+		# Printing Progress to the console
+		print "Frame", frame, "processing" 
+		frame = frame + 1
 	
-	out.write(frame)
+		G = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
+		
+		# Removing The Watermark from the image using mask created earlier 
+		G = cv2.inpaint(G,watermark_masked,1,cv2.INPAINT_TELEA)		
+		
+		# Sharpening the Image
+		kernel = np.array([[0,-1,0], [-1,5,-1], [0,-1,0]])
+		G = cv2.filter2D(G, -1, kernel)
+		
+		# Preforming a erosion to try reduce the noise
+		eroded = cv2.erode(G, kernel, iterations=1) 
+
+		# Removes small details but makes the image alot smoother, when played back to back looks significantly better 
+		gausblur = cv2.GaussianBlur(eroded,(3,3),0)
+		bilatblur = cv2.bilateralFilter(gausblur, 3, 3, 3)
 	
-	if cv2.waitKey(1) & 0xFF == ord('q'):
+		# Denoise
+		denoised = cv2.fastNlMeansDenoising(bilatblur,10,10,7,21)
+		
+		# Writing to my output
+		output = cv2.cvtColor(denoised, cv2.COLOR_GRAY2BGR)
+		writeout.write(output)
+		key = cv2.waitKey(1)
+		
+		# Controls for whole video vs certain frames
+		if fullVideo == False:
+			startFrame = startFrame + 1
+			cv2.imwrite('Frame' + str(frame) + '.jpg', output)
+			print 'Frame' + str(frame -1) + '.jpg written to file'
+		
+			if endFrame == startFrame:
+				print 'End of subsection'
+				break
+	
+	# if the 'q' key is pressed, quit:
+	if key == ord("0"):
 		break
 		
-capture.release()
-cv2.destroyAllWindows()
-
-
-
-
-
-
-
-# Values = G.ravel()
-# plt.hist(Values,bins=256,range=[0,256]); 
-# plt.show()
-
-# H = cv2.equalizeHist(G)
-# cv2.imshow("Fella", H)
-# cv2.imshow("OG", I)
-
-# Values = H.ravel()
-# plt.hist(Values,bins=256,range=[0,256]); 
-# plt.show()
-
-# cv2.waitKey(0)
-
-
-
-
-
-
-
-
-
-
-
-
-##################################################
+video.release()
+writeout.release()
